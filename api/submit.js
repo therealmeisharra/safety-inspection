@@ -32,39 +32,48 @@ export default async function handler(req, res) {
     const auth = getAuth();
     await auth.authorize();
 
-    // 1. Upload gambar ke Google Drive
+    // 1. Cuba upload gambar ke Google Drive (kalau gagal, teruskan juga)
     let imageUrl = '-';
+    let imageNote = '';
     if (data.imageBase64) {
-      const drive    = google.drive({ version: 'v3', auth });
-      const buffer   = Buffer.from(data.imageBase64, 'base64');
-      const fileName = data.fileName || `hazard_${Date.now()}.jpg`;
+      try {
+        const drive    = google.drive({ version: 'v3', auth });
+        const buffer   = Buffer.from(data.imageBase64, 'base64');
+        const fileName = data.fileName || `hazard_${Date.now()}.jpg`;
 
-      const { Readable } = require('stream');
-      const stream = new Readable();
-      stream.push(buffer);
-      stream.push(null);
+        const { Readable } = require('stream');
+        const stream = new Readable();
+        stream.push(buffer);
+        stream.push(null);
 
-      const driveRes = await drive.files.create({
-        requestBody: {
-          name:    fileName,
-          parents: [CONFIG.DRIVE_FOLDER_ID]
-        },
-        media: {
-          mimeType: data.mimeType || 'image/jpeg',
-          body:     stream
-        },
-        fields: 'id, webViewLink'
-      });
+        const driveRes = await drive.files.create({
+          requestBody: {
+            name:    fileName,
+            parents: [CONFIG.DRIVE_FOLDER_ID]
+          },
+          media: {
+            mimeType: data.mimeType || 'image/jpeg',
+            body:     stream
+          },
+          fields: 'id, webViewLink',
+          supportsAllDrives: true
+        });
 
-      await drive.permissions.create({
-        fileId:      driveRes.data.id,
-        requestBody: { role: 'reader', type: 'anyone' }
-      });
+        await drive.permissions.create({
+          fileId:      driveRes.data.id,
+          requestBody: { role: 'reader', type: 'anyone' },
+          supportsAllDrives: true
+        });
 
-      imageUrl = driveRes.data.webViewLink;
+        imageUrl = driveRes.data.webViewLink;
+      } catch (driveErr) {
+        console.error('Drive upload failed:', driveErr.message);
+        imageNote = 'Gambar gagal upload: ' + driveErr.message;
+        imageUrl = imageNote;
+      }
     }
 
-    // 2. Simpan ke Google Sheets
+    // 2. Simpan ke Google Sheets (ni mesti jalan)
     const sheets  = google.sheets({ version: 'v4', auth });
     const now     = new Date();
     const dateStr = now.toLocaleDateString('ms-MY');
@@ -93,7 +102,7 @@ export default async function handler(req, res) {
       }
     });
 
-    return res.status(200).json({ success: true, imageUrl });
+    return res.status(200).json({ success: true, imageUrl, imageNote });
 
   } catch (err) {
     console.error('Error:', err.message);
