@@ -6,17 +6,23 @@ const CONFIG = {
   SHEET_NAME:      'Sheet1',
 };
 
-function getAuth() {
+function getSheetsAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
   return new google.auth.JWT(
     credentials.client_email,
     null,
     credentials.private_key,
-    [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive'
-    ]
+    ['https://www.googleapis.com/auth/spreadsheets']
   );
+}
+
+function getDriveAuth() {
+  const oauth2 = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET
+  );
+  oauth2.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+  return oauth2;
 }
 
 export default async function handler(req, res) {
@@ -29,17 +35,14 @@ export default async function handler(req, res) {
 
   try {
     const data = req.body;
-    const auth = getAuth();
-    await auth.authorize();
 
-    // 1. Cuba upload gambar ke Google Drive (kalau gagal, teruskan juga)
     let imageUrl = '-';
-    let imageNote = '';
     if (data.imageBase64) {
       try {
-        const drive    = google.drive({ version: 'v3', auth });
-        const buffer   = Buffer.from(data.imageBase64, 'base64');
-        const fileName = data.fileName || `hazard_${Date.now()}.jpg`;
+        const driveAuth = getDriveAuth();
+        const drive     = google.drive({ version: 'v3', auth: driveAuth });
+        const buffer    = Buffer.from(data.imageBase64, 'base64');
+        const fileName  = data.fileName || `hazard_${Date.now()}.jpg`;
 
         const { Readable } = require('stream');
         const stream = new Readable();
@@ -47,37 +50,28 @@ export default async function handler(req, res) {
         stream.push(null);
 
         const driveRes = await drive.files.create({
-          requestBody: {
-            name:    fileName,
-            parents: [CONFIG.DRIVE_FOLDER_ID]
-          },
-          media: {
-            mimeType: data.mimeType || 'image/jpeg',
-            body:     stream
-          },
-          fields: 'id, webViewLink',
-          supportsAllDrives: true
+          requestBody: { name: fileName, parents: [CONFIG.DRIVE_FOLDER_ID] },
+          media: { mimeType: data.mimeType || 'image/jpeg', body: stream },
+          fields: 'id, webViewLink'
         });
 
         await drive.permissions.create({
-          fileId:      driveRes.data.id,
-          requestBody: { role: 'reader', type: 'anyone' },
-          supportsAllDrives: true
+          fileId: driveRes.data.id,
+          requestBody: { role: 'reader', type: 'anyone' }
         });
 
         imageUrl = driveRes.data.webViewLink;
       } catch (driveErr) {
         console.error('Drive upload failed:', driveErr.message);
-        imageNote = 'Gambar gagal upload: ' + driveErr.message;
-        imageUrl = imageNote;
+        imageUrl = 'Gambar gagal upload: ' + driveErr.message;
       }
     }
 
-    // 2. Simpan ke Google Sheets (ni mesti jalan)
-    const sheets  = google.sheets({ version: 'v4', auth });
-    const now     = new Date();
-    const dateStr = now.toLocaleDateString('ms-MY');
-    const timeStr = now.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
+    const sheetsAuth = getSheetsAuth();
+    const sheets     = google.sheets({ version: 'v4', auth: sheetsAuth });
+    const now        = new Date();
+    const dateStr    = now.toLocaleDateString('ms-MY');
+    const timeStr    = now.toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
 
     await sheets.spreadsheets.values.append({
       spreadsheetId:    CONFIG.SHEET_ID,
@@ -85,9 +79,7 @@ export default async function handler(req, res) {
       valueInputOption: 'RAW',
       requestBody: {
         values: [[
-          '',
-          dateStr,
-          timeStr,
+          '', dateStr, timeStr,
           data.reporterName || '-',
           data.department   || '-',
           data.location     || '-',
@@ -102,7 +94,7 @@ export default async function handler(req, res) {
       }
     });
 
-    return res.status(200).json({ success: true, imageUrl, imageNote });
+    return res.status(200).json({ success: true, imageUrl });
 
   } catch (err) {
     console.error('Error:', err.message);
