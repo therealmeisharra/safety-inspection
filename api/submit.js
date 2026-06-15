@@ -60,7 +60,7 @@ export default async function handler(req, res) {
           requestBody: { role: 'reader', type: 'anyone' }
         });
 
-        imageUrl = driveRes.data.webViewLink;
+        imageUrl = `=IMAGE("https://drive.google.com/thumbnail?id=${driveRes.data.id}&sz=w800")`;
       } catch (driveErr) {
         console.error('Drive upload failed:', driveErr.message);
         imageUrl = 'Gambar gagal upload: ' + driveErr.message;
@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     await sheets.spreadsheets.values.append({
       spreadsheetId:    CONFIG.SHEET_ID,
       range:            `${CONFIG.SHEET_NAME}!A:S`,
-      valueInputOption: 'RAW',
+      valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: [[
           '', dateStr, timeStr,
