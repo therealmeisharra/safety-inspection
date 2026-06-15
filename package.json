@@ -1,0 +1,8 @@
+{
+  "name": "fes-hirarc",
+  "version": "1.0.0",
+  "description": "FES HIRARC Safety Report System",
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  }
+}
