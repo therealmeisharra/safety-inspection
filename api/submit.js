@@ -60,7 +60,7 @@ export default async function handler(req, res) {
           requestBody: { role: 'reader', type: 'anyone' }
         });
 
-        imageUrl = `=IMAGE("https://drive.google.com/thumbnail?id=${driveRes.data.id}&sz=w800")`;
+        imageUrl = `=IMAGE("https://lh3.googleusercontent.com/d/${driveRes.data.id}=w800")`;
       } catch (driveErr) {
         console.error('Drive upload failed:', driveErr.message);
         imageUrl = 'Gambar gagal upload: ' + driveErr.message;
